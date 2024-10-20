@@ -1,0 +1,18 @@
+[package]
+name = "roygbiv-rs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+iced = { version = "0.13.1", features = ["canvas", "image", "tokio", "svg"] }
+iced_aw = { version = "0.11.0", default-features = false, features = [
+	# "tab_bar",
+	# "tabs",
+	"menu",
+	"selection_list",
+] }
+tokio = { version = "*", features = ["fs"] }
+rand = "0.8.3"
+rfd = "0.15.0"
