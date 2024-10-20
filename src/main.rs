@@ -3,14 +3,13 @@ use std::{
     io::{self},
     path::PathBuf,
     sync::Arc,
-    time::Instant,
 };
 
 use iced::{
     color, mouse,
     widget::{
         button, canvas, column, container, horizontal_rule, horizontal_space, image::Handle,
-        responsive, row, rule, svg, text, tooltip, vertical_rule, Rule,
+        responsive, row, rule, svg, text, text_input, tooltip, vertical_rule, Rule,
     },
     window::frames,
     Alignment, Color, Element, Font,
@@ -18,6 +17,7 @@ use iced::{
     Padding, Pixels, Point, Rectangle, Renderer, Settings, Size, Subscription, Task, Theme,
 };
 use iced_aw::{style::Status, SelectionList};
+use image::GenericImageView;
 
 pub fn main() -> iced::Result {
     iced::application("roygbiv", Roygbiv::update, Roygbiv::view)
@@ -160,20 +160,32 @@ impl Roygbiv {
             }
             Message::ImageFileOpened(result) => {
                 if let Ok((path, contents)) = result {
-                    let layers_length = &self.canvas_state.layers.len();
                     let file_name = if let Some(file_name) = path.file_name() {
                         file_name.to_str()
                     } else {
                         path.to_str()
                     }
                     .unwrap_or("Unnamed");
+                    let image = image::load_from_memory(&contents);
+                    let image_size: Size = if let Ok(image) = image {
+                        let dimensions = image.dimensions();
+
+                        Size {
+                            width: dimensions.0 as f32,
+                            height: dimensions.1 as f32,
+                        }
+                    } else {
+                        Size {
+                            width: &self.canvas_width - 20.,
+                            height: &self.canvas_height - 20.,
+                        }
+                    };
                     let layer = Layer {
-                        id: format!("{}", layers_length),
                         name: format!("{}", file_name),
                         x: 0.,
                         y: 0.,
-                        width: &self.canvas_width - 20.,
-                        height: &self.canvas_height - 20.,
+                        width: image_size.width,
+                        height: image_size.height,
                         scale: 1.,
                         opacity: 1.,
                         handle: Handle::from_bytes(contents.to_vec()),
@@ -214,12 +226,28 @@ impl Roygbiv {
     fn layer_settings_view(&self, layer: Option<&Layer>) -> Element<Message> {
         if let Some(layer) = layer {
             column![
-                text(format!("x: {}", layer.x)),
-                text(format!("y: {}", layer.y)),
-                text(format!("width: {}", layer.width)),
-                text(format!("height: {}", layer.height)),
-                text(format!("scale: {}", layer.scale)),
-                text(format!("opacity: {}", layer.opacity)),
+                column![text("x:"), text_input("x", &format!("{}", layer.x))].spacing(3.),
+                column![text("y:"), text_input("y", &format!("{}", layer.y))].spacing(3.),
+                column![
+                    text("width:"),
+                    text_input("width", &format!("{}", layer.width))
+                ]
+                .spacing(3.),
+                column![
+                    text("height:"),
+                    text_input("height", &format!("{}", layer.height))
+                ]
+                .spacing(3.),
+                column![
+                    text("scale:"),
+                    text_input("scale", &format!("{}", layer.scale))
+                ]
+                .spacing(3.),
+                column![
+                    text("opacity:"),
+                    text_input("opacity", &format!("{}", layer.opacity))
+                ]
+                .spacing(3.),
             ]
             .height(Length::Fill)
             .padding([6., 7.])
@@ -378,7 +406,6 @@ impl Roygbiv {
 
 #[derive(Debug)]
 struct Layer {
-    id: String,
     name: String,
     x: f32,
     y: f32,

@@ -22,3 +22,4 @@ iced_aw = { version = "0.11.0", default-features = false, features = [
 tokio = { version = "*", features = ["fs"] }
 rand = "0.8.3"
 rfd = "0.15.0"
+image = "0.25.4"
