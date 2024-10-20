@@ -72,8 +72,8 @@ enum Message {
     RemoveLayer(usize),
     ImageFileOpened(Result<(PathBuf, Arc<Vec<u8>>), Error>),
     LayerSelected(usize, String),
-
-    Tick(Instant),
+    SelectLastLayer,
+    Tick,
 }
 
 #[derive(Debug, Clone)]
@@ -156,7 +156,7 @@ impl Roygbiv {
                 let _ = &self.canvas_state.layers.remove(index);
                 self.update_layer_names();
 
-                Task::none()
+                Task::done(Message::SelectLastLayer)
             }
             Message::ImageFileOpened(result) => {
                 if let Ok((path, contents)) = result {
@@ -182,15 +182,20 @@ impl Roygbiv {
                     self.update_layer_names();
                 }
 
-                Task::none()
+                Task::done(Message::SelectLastLayer)
             }
             Message::LayerSelected(index, _) => {
                 self.selected_layer_index = index;
 
                 Task::none()
             }
-            Message::Tick(_) => {
+            Message::Tick => {
                 self.canvas_state.update();
+
+                Task::none()
+            }
+            Message::SelectLastLayer => {
+                self.selected_layer_index = self.canvas_state.layers.len().max(1) - 1;
 
                 Task::none()
             }
@@ -254,9 +259,14 @@ impl Roygbiv {
             .padding(Padding::from([6., 7.]));
 
         let canvas_section = container(
-            canvas(&self.canvas_state)
-                .width(Length::Fixed(self.canvas_width))
-                .height(Length::Fixed(self.canvas_height)),
+            container(
+                canvas(&self.canvas_state)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            )
+            .clip(true)
+            .width(Length::Fixed(self.canvas_width))
+            .height(Length::Fixed(self.canvas_height)),
         )
         .center(Length::Fill);
 
@@ -344,7 +354,7 @@ impl Roygbiv {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        frames().map(Message::Tick)
+        frames().map(|_| Message::Tick)
     }
 }
 
@@ -401,33 +411,44 @@ impl<Message> canvas::Program<Message> for CanvasState {
     ) -> Vec<canvas::Geometry<Renderer>> {
         let mut stuff: Vec<canvas::Geometry<Renderer>> = vec![];
 
-        let background = self
-            .background_cache
-            .draw(renderer, bounds.size(), |frame| {
-                frame.fill_rectangle(Point::ORIGIN, frame.size(), Color::BLACK);
-            });
+        let bounds_size = bounds.size();
+
+        let background = self.background_cache.draw(renderer, bounds_size, |frame| {
+            frame.fill_rectangle(Point::ORIGIN, frame.size(), Color::BLACK);
+        });
         stuff.push(background);
 
-        for layer in &self.layers {
-            stuff.push(self.layers_cache.draw(
-                renderer,
-                Size {
-                    width: layer.width,
-                    height: layer.height,
-                },
-                |frame| {
-                    frame.draw_image(
-                        Rectangle {
-                            x: layer.x,
-                            y: layer.y,
-                            width: layer.width,
-                            height: layer.height,
-                        },
-                        &layer.handle,
-                    );
-                },
-            ))
-        }
+        stuff.push(self.layers_cache.draw(renderer, bounds_size, |frame| {
+            for layer_index in 0..self.layers.len() {
+                let layer = &self.layers.get(layer_index).unwrap();
+                let aspect_ratio = layer.width / layer.height;
+
+                let layer_width = layer.width;
+                let layer_height = layer.height;
+
+                let final_width = if layer_width > bounds_size.width {
+                    bounds_size.width - 20.
+                } else {
+                    layer_width
+                };
+
+                let final_height = if final_width != layer_width {
+                    final_width / aspect_ratio
+                } else {
+                    layer_height
+                };
+
+                frame.draw_image(
+                    Rectangle {
+                        x: layer.x,
+                        y: layer.y,
+                        width: final_width,
+                        height: final_height,
+                    },
+                    &layer.handle,
+                );
+            }
+        }));
 
         stuff
     }
