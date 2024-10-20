@@ -1,14 +1,21 @@
-use std::{fmt::Display, io, path::PathBuf, sync::Arc};
+use std::{
+    fmt::Display,
+    io::{self},
+    path::PathBuf,
+    sync::Arc,
+    time::Instant,
+};
 
 use iced::{
     color, mouse,
     widget::{
-        button, canvas, column, container, horizontal_rule, horizontal_space, row, rule, svg, text,
-        tooltip, vertical_rule, Rule,
+        button, canvas, column, container, horizontal_rule, horizontal_space, image::Handle, row,
+        rule, svg, text, tooltip, vertical_rule, Rule,
     },
+    window::frames,
     Alignment, Color, Element, Font,
     Length::{self},
-    Padding, Pixels, Point, Rectangle, Renderer, Settings, Task, Theme,
+    Padding, Pixels, Point, Rectangle, Renderer, Settings, Size, Subscription, Task, Theme,
 };
 use iced_aw::{style::Status, SelectionList};
 
@@ -19,6 +26,7 @@ pub fn main() -> iced::Result {
             default_text_size: Pixels(14.0),
             ..Default::default()
         })
+        .subscription(Roygbiv::subscription)
         .run_with(|| {
             (
                 Roygbiv {
@@ -30,7 +38,6 @@ pub fn main() -> iced::Result {
                     audio_file_contents: vec![],
                     is_loading_file: false,
 
-                    layers: vec![],
                     layer_names: vec![],
                     selected_layer_index: 0,
                 },
@@ -49,7 +56,6 @@ struct Roygbiv {
     audio_file_contents: Vec<u8>,
     is_loading_file: bool,
 
-    layers: Vec<Layer>,
     layer_names: Vec<String>,
     selected_layer_index: usize,
 }
@@ -66,6 +72,8 @@ enum Message {
     RemoveLayer(usize),
     ImageFileOpened(Result<(PathBuf, Arc<Vec<u8>>), Error>),
     LayerSelected(usize, String),
+
+    Tick(Instant),
 }
 
 #[derive(Debug, Clone)]
@@ -145,14 +153,14 @@ impl Roygbiv {
             }
             Message::AddImageLayer => Task::perform(open_image_file(), Message::ImageFileOpened),
             Message::RemoveLayer(index) => {
-                let _ = &self.layers.remove(index);
+                let _ = &self.canvas_state.layers.remove(index);
                 self.update_layer_names();
 
                 Task::none()
             }
             Message::ImageFileOpened(result) => {
                 if let Ok((path, contents)) = result {
-                    let layers_length = &self.layers.len();
+                    let layers_length = &self.canvas_state.layers.len();
                     let file_name = if let Some(file_name) = path.file_name() {
                         file_name.to_str()
                     } else {
@@ -168,9 +176,9 @@ impl Roygbiv {
                         height: &self.canvas_height - 20.,
                         scale: 1.,
                         opacity: 1.,
-                        contents: contents.to_vec(),
+                        handle: Handle::from_bytes(contents.to_vec()),
                     };
-                    let _ = &self.layers.push(layer);
+                    let _ = &self.canvas_state.layers.push(layer);
                     self.update_layer_names();
                 }
 
@@ -181,11 +189,21 @@ impl Roygbiv {
 
                 Task::none()
             }
+            Message::Tick(_) => {
+                self.canvas_state.update();
+
+                Task::none()
+            }
         }
     }
 
     fn update_layer_names(&mut self) {
-        self.layer_names = self.layers.iter().map(|layer| layer.name.clone()).collect()
+        self.layer_names = self
+            .canvas_state
+            .layers
+            .iter()
+            .map(|layer| layer.name.clone())
+            .collect()
     }
 
     fn layer_settings_view(&self, layer: Option<&Layer>) -> Element<Message> {
@@ -245,7 +263,7 @@ impl Roygbiv {
         let main_column = column![canvas_section, horizontal_separator(), audio_section]
             .width(Length::FillPortion(2));
 
-        let selected_layer = self.layers.get(self.selected_layer_index);
+        let selected_layer = self.canvas_state.layers.get(self.selected_layer_index);
 
         let layer_selection_list = SelectionList::new_with(
             &self.layer_names,
@@ -324,6 +342,10 @@ impl Roygbiv {
 
         row![main_column, vertical_separator(), settings_column].into()
     }
+
+    fn subscription(&self) -> Subscription<Message> {
+        frames().map(Message::Tick)
+    }
 }
 
 #[derive(Debug)]
@@ -336,7 +358,7 @@ struct Layer {
     height: f32,
     scale: f32,
     opacity: f32,
-    contents: Vec<u8>,
+    handle: Handle,
 }
 
 impl Display for Layer {
@@ -347,17 +369,23 @@ impl Display for Layer {
 
 #[derive(Debug)]
 struct CanvasState {
+    layers: Vec<Layer>,
     background_cache: canvas::Cache,
+    layers_cache: canvas::Cache,
 }
 
 impl CanvasState {
     pub fn new() -> CanvasState {
         CanvasState {
+            layers: vec![],
             background_cache: canvas::Cache::default(),
+            layers_cache: canvas::Cache::default(),
         }
     }
 
-    // pub fn update(&mut self) {}
+    pub fn update(&mut self) {
+        self.layers_cache.clear();
+    }
 }
 
 impl<Message> canvas::Program<Message> for CanvasState {
@@ -371,13 +399,37 @@ impl<Message> canvas::Program<Message> for CanvasState {
         bounds: Rectangle,
         _cursor: mouse::Cursor,
     ) -> Vec<canvas::Geometry<Renderer>> {
+        let mut stuff: Vec<canvas::Geometry<Renderer>> = vec![];
+
         let background = self
             .background_cache
             .draw(renderer, bounds.size(), |frame| {
                 frame.fill_rectangle(Point::ORIGIN, frame.size(), Color::BLACK);
             });
+        stuff.push(background);
 
-        vec![background]
+        for layer in &self.layers {
+            stuff.push(self.layers_cache.draw(
+                renderer,
+                Size {
+                    width: layer.width,
+                    height: layer.height,
+                },
+                |frame| {
+                    frame.draw_image(
+                        Rectangle {
+                            x: layer.x,
+                            y: layer.y,
+                            width: layer.width,
+                            height: layer.height,
+                        },
+                        &layer.handle,
+                    );
+                },
+            ))
+        }
+
+        stuff
     }
 }
 
