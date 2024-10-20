@@ -9,8 +9,8 @@ use std::{
 use iced::{
     color, mouse,
     widget::{
-        button, canvas, column, container, horizontal_rule, horizontal_space, image::Handle, row,
-        rule, svg, text, tooltip, vertical_rule, Rule,
+        button, canvas, column, container, horizontal_rule, horizontal_space, image::Handle,
+        responsive, row, rule, svg, text, tooltip, vertical_rule, Rule,
     },
     window::frames,
     Alignment, Color, Element, Font,
@@ -184,7 +184,7 @@ impl Roygbiv {
 
                 Task::done(Message::SelectLastLayer)
             }
-            Message::LayerSelected(index, _) => {
+            Message::LayerSelected(index, _string) => {
                 self.selected_layer_index = index;
 
                 Task::none()
@@ -259,12 +259,30 @@ impl Roygbiv {
             .padding(Padding::from([6., 7.]));
 
         let canvas_section = container(
-            container(
+            container(responsive(|size| {
+                let canvas_width = self.canvas_width;
+                let canvas_height = self.canvas_height;
+                let aspect_ratio = canvas_width / canvas_height;
+
+                let should_downsize = canvas_width > size.width;
+
+                let final_width = if should_downsize {
+                    Length::Fixed(size.width)
+                } else {
+                    Length::Fill
+                };
+
+                let final_height = if should_downsize {
+                    Length::Fixed(size.width / aspect_ratio)
+                } else {
+                    Length::Fill
+                };
+
                 canvas(&self.canvas_state)
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            )
-            .clip(true)
+                    .width(final_width)
+                    .height(final_height)
+                    .into()
+            }))
             .width(Length::Fixed(self.canvas_width))
             .height(Length::Fixed(self.canvas_height)),
         )
