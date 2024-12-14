@@ -7,17 +7,17 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.13.1", features = [
-	"canvas",
-	"image",
-	"tokio",
-	"svg",
-	"lazy",
+    "canvas",
+    "image",
+    "tokio",
+    "svg",
+    "lazy",
 ] }
 iced_aw = { version = "0.11.0", default-features = false, features = [
-	# "tab_bar",
-	# "tabs",
-	"menu",
-	"selection_list",
+    # "tab_bar",
+    # "tabs",
+    "menu",
+    "selection_list",
 ] }
 tokio = { version = "*", features = ["fs"] }
 rand = "0.8.3"

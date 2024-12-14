@@ -14,7 +14,7 @@ use iced::{
     window::frames,
     Alignment, Color, Element, Font,
     Length::{self},
-    Padding, Pixels, Point, Rectangle, Renderer, Settings, Size, Subscription, Task, Theme,
+    Padding, Pixels, Point, Rectangle, Renderer, Settings, Subscription, Task, Theme,
 };
 use iced_aw::{style::Status, SelectionList};
 use image::GenericImageView;
@@ -167,31 +167,46 @@ impl Roygbiv {
                     }
                     .unwrap_or("Unnamed");
                     let image = image::load_from_memory(&contents);
-                    let image_size: Size = if let Ok(image) = image {
-                        let dimensions = image.dimensions();
-
-                        Size {
-                            width: dimensions.0 as f32,
-                            height: dimensions.1 as f32,
+                    match image {
+                        Ok(image) => {
+                            let dimensions = image.dimensions();
+                            let x = 0.;
+                            let y = 0.;
+                            let width = dimensions.0 as f32;
+                            let is_clipping_horizontally = width > self.canvas_width;
+                            let width = if is_clipping_horizontally {
+                                self.canvas_width - x
+                            } else {
+                                width
+                            };
+                            let height = dimensions.1 as f32;
+                            let is_clipping_vertically = height > self.canvas_height;
+                            let height = if is_clipping_vertically {
+                                self.canvas_height - y
+                            } else {
+                                height
+                            };
+                            let handle = if is_clipping_vertically || is_clipping_horizontally {
+                                let cropped = image.crop_imm(0, 0, width as u32, height as u32);
+                                Handle::from_bytes(cropped.into_bytes())
+                            } else {
+                                Handle::from_bytes(contents.to_vec())
+                            };
+                            let layer = Layer {
+                                name: format!("{}", file_name),
+                                x,
+                                y,
+                                width,
+                                height,
+                                scale: 1.,
+                                opacity: 1.,
+                                handle,
+                            };
+                            let _ = &self.canvas_state.layers.push(layer);
+                            self.update_layer_names();
                         }
-                    } else {
-                        Size {
-                            width: &self.canvas_width - 20.,
-                            height: &self.canvas_height - 20.,
-                        }
-                    };
-                    let layer = Layer {
-                        name: format!("{}", file_name),
-                        x: 0.,
-                        y: 0.,
-                        width: image_size.width,
-                        height: image_size.height,
-                        scale: 1.,
-                        opacity: 1.,
-                        handle: Handle::from_bytes(contents.to_vec()),
-                    };
-                    let _ = &self.canvas_state.layers.push(layer);
-                    self.update_layer_names();
+                        _ => println!("could not load image"),
+                    }
                 }
 
                 Task::done(Message::SelectLastLayer)
@@ -466,29 +481,13 @@ impl<Message> canvas::Program<Message> for CanvasState {
         stuff.push(self.layers_cache.draw(renderer, bounds_size, |frame| {
             for layer_index in 0..self.layers.len() {
                 let layer = &self.layers.get(layer_index).unwrap();
-                let aspect_ratio = layer.width / layer.height;
-
-                let layer_width = layer.width;
-                let layer_height = layer.height;
-
-                let final_width = if layer_width > bounds_size.width {
-                    bounds_size.width - 20.
-                } else {
-                    layer_width
-                };
-
-                let final_height = if final_width != layer_width {
-                    final_width / aspect_ratio
-                } else {
-                    layer_height
-                };
 
                 frame.draw_image(
                     Rectangle {
                         x: layer.x,
                         y: layer.y,
-                        width: final_width,
-                        height: final_height,
+                        width: layer.width,
+                        height: layer.height,
                     },
                     &layer.handle,
                 );
